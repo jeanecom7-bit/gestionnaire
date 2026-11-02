@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StockFaso – Gestion de stock</title>
+<style>
+:root{--bg:#f2f4f1;--card:#fff;--ink:#1d2623;--mut:#66726d;--line:#dde3df;--green:#1f5c4a;--green2:#e3efe9;--amber:#b7791f;--amber2:#fbefd5;--red:#b5352b;--red2:#f9e0dd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+header{background:var(--green);color:#fff;padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:14px;justify-content:space-between}
+header h1{margin:0;font-size:20px;letter-spacing:.2px}
+nav{display:flex;gap:6px;flex-wrap:wrap}
+nav button{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;padding:7px 14px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{background:#fff;color:var(--green);font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+.view{display:none}.view.on{display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.stat b{display:block;font-size:24px;margin-top:2px}
+.stat span{color:var(--mut);font-size:13px}
+.stat.warn b{color:var(--red)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:20px}
+.panel h2{margin:0 0 10px;font-size:17px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);width:100%}
+.bar input,.bar select{width:auto;flex:1 1 160px}
+button.btn{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid var(--green);background:var(--green);color:#fff;cursor:pointer}
+button.btn.sec{background:#fff;color:var(--green)}
+button.btn.del{border-color:var(--red);color:var(--red);background:#fff}
+button.btn.sm{padding:4px 9px;font-size:13px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #7fb8a4;outline-offset:1px}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:13px;color:var(--mut);font-weight:600}
+td.n,th.n{text-align:right}
+td.act{white-space:nowrap;text-align:right}
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.ok{background:var(--green2);color:var(--green)}.low{background:var(--amber2);color:var(--amber)}.out{background:var(--red2);color:var(--red)}
+.in{color:var(--green);font-weight:600}.sortie{color:var(--red);font-weight:600}
+.empty{color:var(--mut);padding:18px 4px}
+dialog{border:none;border-radius:10px;padding:0;width:min(440px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(20,30,26,.5)}
+dialog form{padding:20px}
+dialog h3{margin:0 0 14px}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 3px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+#msg{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:6px;display:none;z-index:9}
+@media (prefers-reduced-motion:no-preference){.view.on{animation:f .15s ease-out}@keyframes f{from{opacity:.4}to{opacity:1}}}
+</style>
+</head>
+<body>
+<header>
+  <h1>StockFaso</h1>
+  <nav id="nav">
+    <button data-v="dash" class="on">Tableau de bord</button>
+    <button data-v="prod">Produits</button>
+    <button data-v="mvt">Mouvements</button>
+  </nav>
+</header>
+
+<main>
+  <section id="dash" class="view on">
+    <div class="stats" id="stats"></div>
+    <div class="panel"><h2>Produits à réapprovisionner</h2><div id="alerts"></div></div>
+    <div class="panel"><h2>Derniers mouvements</h2><div class="wrap" id="lastMvt"></div></div>
+  </section>
+
+  <section id="prod" class="view">
+    <div class="panel">
+      <div class="bar">
+        <input id="q" type="search" placeholder="Rechercher un produit" aria-label="Rechercher un produit">
+        <select id="cat" aria-label="Filtrer par catégorie"></select>
+        <button class="btn" id="addBtn">Ajouter un produit</button>
+        <button class="btn sec" id="csvProd">Exporter en CSV</button>
+      </div>
+      <div class="wrap" id="prodTable"></div>
+    </div>
+  </section>
+
+  <section id="mvt" class="view">
+    <div class="panel">
+      <div class="bar">
+        <button class="btn sec" id="csvMvt">Exporter en CSV</button>
+      </div>
+      <div class="wrap" id="mvtTable"></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="dProd">
+  <form method="dialog" id="fProd">
+    <h3 id="tProd">Ajouter un produit</h3>
+    <input type="hidden" id="pId">
+    <label for="pNom">Nom du produit</label><input id="pNom" required>
+    <label for="pCat">Catégorie</label><input id="pCat" placeholder="Ex. : Boissons">
+    <div class="row">
+      <div><label for="pAch">Prix d’achat (F)</label><input id="pAch" type="number" min="0" step="any" required></div>
+      <div><label for="pVen">Prix de vente (F)</label><input id="pVen" type="number" min="0" step="any" required></div>
+    </div>
+    <div class="row">
+      <div><label for="pQte">Quantité en stock</label><input id="pQte" type="number" min="0" step="any" required></div>
+      <div><label for="pSeuil">Seuil d’alerte</label><input id="pSeuil" type="number" min="0" step="any" value="5" required></div>
+    </div>
+    <div class="foot">
+      <button type="button" class="btn sec" data-close="dProd">Annuler</button>
+      <button class="btn" type="submit">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dMvt">
+  <form method="dialog" id="fMvt">
+    <h3 id="tMvt">Mouvement de stock</h3>
+    <input type="hidden" id="mId">
+    <label for="mType">Type</label>
+    <select id="mType"><option value="entree">Entrée (réception, achat)</option><option value="sortie">Sortie (vente, perte)</option></select>
+    <label for="mQte">Quantité</label><input id="mQte" type="number" min="0.01" step="any" required>
+    <label for="mNote">Note (facultatif)</label><input id="mNote" placeholder="Ex. : Livraison fournisseur">
+    <div class="foot">
+      <button type="button" class="btn sec" data-close="dMvt">Annuler</button>
+      <button class="btn" type="submit">Valider</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="msg" role="status"></div>
+
+<script>
+const KEY_P="stockfaso_produits", KEY_M="stockfaso_mouvements";
+let produits=[], mouvements=[];
+
+function lire(k){try{return JSON.parse(localStorage.getItem(k))||[]}catch(e){return []}}
+function ecrire(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){toast("Enregistrement impossible : l’espace du navigateur est bloqué.")}}
+function sauver(){ecrire(KEY_P,produits);ecrire(KEY_M,mouvements)}
+produits=lire(KEY_P);mouvements=lire(KEY_M);
+
+const $=id=>document.getElementById(id);
+const F=n=>(Math.round(n*100)/100).toLocaleString("fr-FR")+" F";
+const N=n=>(Math.round(n*100)/100).toLocaleString("fr-FR");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function toast(t){const m=$("msg");m.textContent=t;m.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display="none",2600)}
+
+function statut(p){
+  if(p.qte<=0)return ["out","Rupture"];
+  if(p.qte<=p.seuil)return ["low","Stock bas"];
+  return ["ok","En stock"];
+}
+
+/* Navigation */
+$("nav").addEventListener("click",e=>{
+  const v=e.target.dataset.v; if(!v)return;
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b===e.target));
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id===v));
+});
+document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.close).close()));
+
+/* Tableau de bord */
+function dash(){
+  const valAch=produits.reduce((s,p)=>s+p.qte*p.prixAchat,0);
+  const valVen=produits.reduce((s,p)=>s+p.qte*p.prixVente,0);
+  const alertes=produits.filter(p=>p.qte<=p.seuil);
+  $("stats").innerHTML=
+    `<div class="stat"><span>Produits</span><b>${produits.length}</b></div>
+     <div class="stat"><span>Valeur du stock (achat)</span><b>${F(valAch)}</b></div>
+     <div class="stat"><span>Marge potentielle</span><b>${F(valVen-valAch)}</b></div>
+     <div class="stat ${alertes.length?"warn":""}"><span>Produits en alerte</span><b>${alertes.length}</b></div>`;
+  $("alerts").innerHTML=alertes.length
+    ?alertes.map(p=>{const[c,l]=statut(p);return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>${esc(p.nom)} – ${N(p.qte)} restant(s)</span><span class="tag ${c}">${l}</span></div>`}).join("")
+    :`<div class="empty">Aucun produit sous le seuil d’alerte.</div>`;
+  $("lastMvt").innerHTML=tableMvt(mouvements.slice(0,5));
+}
+
+/* Produits */
+function catList(){
+  const cats=[...new Set(produits.map(p=>p.categorie).filter(Boolean))].sort();
+  const cur=$("cat").value;
+  $("cat").innerHTML=`<option value="">Toutes les catégories</option>`+cats.map(c=>`<option>${esc(c)}</option>`).join("");
+  $("cat").value=cats.includes(cur)?cur:"";
+}
+function tableProd(){
+  const q=$("q").value.trim().toLowerCase(), c=$("cat").value;
+  const L=produits.filter(p=>(!q||p.nom.toLowerCase().includes(q))&&(!c||p.categorie===c));
+  if(!L.length){$("prodTable").innerHTML=`<div class="empty">${produits.length?"Aucun produit ne correspond à la recherche.":"Votre stock est vide. Cliquez sur « Ajouter un produit » pour commencer."}</div>`;return}
+  $("prodTable").innerHTML=`<table><thead><tr><th>Produit</th><th>Catégorie</th><th class="n">Prix d’achat</th><th class="n">Prix de vente</th><th class="n">Quantité</th><th>État</th><th></th></tr></thead><tbody>`+
+  L.map(p=>{const[c,l]=statut(p);return `<tr>
+    <td>${esc(p.nom)}</td><td>${esc(p.categorie||"–")}</td>
+    <td class="n">${F(p.prixAchat)}</td><td class="n">${F(p.prixVente)}</td>
+    <td class="n"><b>${N(p.qte)}</b></td><td><span class="tag ${c}">${l}</span></td>
+    <td class="act"><button class="btn sm" data-a="mvt" data-id="${p.id}">Mouvement</button>
+    <button class="btn sm sec" data-a="edit" data-id="${p.id}">Modifier</button>
+    <button class="btn sm del" data-a="del" data-id="${p.id}">Supprimer</button></td></tr>`}).join("")+`</tbody></table>`;
+}
+$("prodTable").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-a]"); if(!b)return;
+  const p=produits.find(x=>x.id===b.dataset.id); if(!p)return;
+  if(b.dataset.a==="edit")ouvrirProd(p);
+  if(b.dataset.a==="mvt"){$("mId").value=p.id;$("tMvt").textContent="Mouvement : "+p.nom;$("fMvt").reset();$("dMvt").showModal()}
+  if(b.dataset.a==="del"&&confirm("Supprimer « "+p.nom+" » ? Son historique de mouvements sera conservé.")){
+    produits=produits.filter(x=>x.id!==p.id);sauver();rendre();toast("Produit supprimé")}
+});
+function ouvrirProd(p){
+  $("fProd").reset();
+  $("tProd").textContent=p?"Modifier le produit":"Ajouter un produit";
+  $("pId").value=p?p.id:"";
+  if(p){$("pNom").value=p.nom;$("pCat").value=p.categorie||"";$("pAch").value=p.prixAchat;$("pVen").value=p.prixVente;$("pQte").value=p.qte;$("pSeuil").value=p.seuil}
+  $("dProd").showModal();
+}
+$("addBtn").onclick=()=>ouvrirProd(null);
+$("q").oninput=tableProd;$("cat").onchange=tableProd;
+
+$("fProd").addEventListener("submit",e=>{
+  const id=$("pId").value;
+  const d={nom:$("pNom").value.trim(),categorie:$("pCat").value.trim(),prixAchat:+$("pAch").value,prixVente:+$("pVen").value,qte:+$("pQte").value,seuil:+$("pSeuil").value};
+  if(!d.nom)return;
+  if(id){Object.assign(produits.find(p=>p.id===id),d);toast("Produit modifié")}
+  else{
+    const p={id:uid(),...d};produits.push(p);
+    if(p.qte>0)mouvements.unshift({id:uid(),date:new Date().toISOString(),pid:p.id,nom:p.nom,type:"entree",qte:p.qte,note:"Stock initial"});
+    toast("Produit ajouté");
+  }
+  sauver();rendre();
+});
+
+/* Mouvements */
+$("fMvt").addEventListener("submit",e=>{
+  const p=produits.find(x=>x.id===$("mId").value); if(!p)return;
+  const type=$("mType").value, q=+$("mQte").value;
+  if(!(q>0))return;
+  if(type==="sortie"&&q>p.qte){e.preventDefault();toast("Sortie impossible : il reste seulement "+N(p.qte)+" en stock.");return}
+  p.qte+=type==="entree"?q:-q;
+  mouvements.unshift({id:uid(),date:new Date().toISOString(),pid:p.id,nom:p.nom,type,qte:q,note:$("mNote").value.trim()});
+  sauver();rendre();toast(type==="entree"?"Entrée enregistrée":"Sortie enregistrée");
+});
+function tableMvt(L){
+  if(!L.length)return `<div class="empty">Aucun mouvement pour le moment.</div>`;
+  return `<table><thead><tr><th>Date</th><th>Produit</th><th>Type</th><th class="n">Quantité</th><th>Note</th></tr></thead><tbody>`+
+  L.map(m=>`<tr><td>${new Date(m.date).toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"short"})}</td><td>${esc(m.nom)}</td>
+  <td class="${m.type==="entree"?"in":"sortie"}">${m.type==="entree"?"Entrée":"Sortie"}</td><td class="n">${N(m.qte)}</td><td>${esc(m.note||"")}</td></tr>`).join("")+`</tbody></table>`;
+}
+
+/* Export CSV */
+function csv(nom,lignes){
+  const t="\uFEFF"+lignes.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(";")).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([t],{type:"text/csv;charset=utf-8"}));
+  a.download=nom;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+$("csvProd").onclick=()=>csv("produits.csv",[["Produit","Catégorie","Prix d’achat","Prix de vente","Quantité","Seuil"],...produits.map(p=>[p.nom,p.categorie,p.prixAchat,p.prixVente,p.qte,p.seuil])]);
+$("csvMvt").onclick=()=>csv("mouvements.csv",[["Date","Produit","Type","Quantité","Note"],...mouvements.map(m=>[m.date,m.nom,m.type,m.qte,m.note])]);
+
+function rendre(){catList();tableProd();$("mvtTable").innerHTML=tableMvt(mouvements);dash()}
+rendre();
+</script>
+</body>
+</html>
